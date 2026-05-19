@@ -1,0 +1,53 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: machine-state-service
+
+  datasource:
+    url: jdbc:h2:mem:machinedb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+
+mqtt:
+  broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
+  client-id: machine-state-service
+  username: ${MQTT_USERNAME:}
+  password: ${MQTT_PASSWORD:}
+  topic-prefix: laundry/cameroon
+  qos: 1
+  reconnect-interval: 5
+
+machine:
+  available-ids:
+    - washer_01
+    - washer_02
+    - washer_03
+    - washer_04
+    - washer_05
+    - washer_06
+    - dryer_01
+    - dryer_02
+    - dryer_03
+    - dryer_04
+  heartbeat-timeout-seconds: 120
+  cycle-check-interval-ms: 60000
+
+payment-service:
+  base-url: http://localhost:8081
