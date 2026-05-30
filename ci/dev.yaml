@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# MachineStateService — Dev environment configuration
+#
+# Load with:
+#   java -jar target/machine-state-service-*.jar \
+#     --spring.config.additional-location=file:./ci/dev.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+
+server:
+  port: 8082
+
+spring:
+  application:
+    name: machine-state-service-dev
+
+  # ── Database: H2 in-memory for dev ──────────────────────────────────────────
+  datasource:
+    url: jdbc:h2:mem:machinedb_dev;DB_CLOSE_DELAY=-1;MODE=LEGACY
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: false
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  # ── Auth0 Resource Server (dev tenant) ──────────────────────────────────────
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://dev-iuo6si32jobgnmod.eu.auth0.com/
+
+auth0:
+  audience: https://smartlaundry.api
+
+# ── MQTT: local broker for dev ───────────────────────────────────────────────
+mqtt:
+  broker-url: tcp://localhost:1883
+  client-id: machine-state-service-dev
+  username: ${MQTT_USERNAME:}
+  password: ${MQTT_PASSWORD:}
+  topic-prefix: laundry/cameroon
+  qos: 1
+  reconnect-interval: 5
+
+# ── Machine seeding ───────────────────────────────────────────────────────────
+machine:
+  available-ids:
+    - washer_01
+    - washer_02
+    - washer_03
+    - washer_04
+    - washer_05
+    - washer_06
+    - dryer_01
+    - dryer_02
+    - dryer_03
+    - dryer_04
+  heartbeat-timeout-seconds: 120
+  cycle-check-interval-ms: 60000
+
+# ── CORS ─────────────────────────────────────────────────────────────────────
+cors:
+  allowed-origins: "http://localhost:3000,http://localhost:4200,http://localhost:8080"
+
+# ── Swagger UI ────────────────────────────────────────────────────────────────
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    oauth:
+      client-id: ${SWAGGER_CLIENT_ID:qhBuc3}
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+    com.smartlaundromat: DEBUG
+    org.springframework.security: DEBUG
+    org.eclipse.paho: INFO
