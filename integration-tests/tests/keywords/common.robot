@@ -1,23 +1,54 @@
 *** Settings ***
 Library     RequestsLibrary
 Library     JSONLibrary
+Library     Collections
 Resource    ../resources/variables.robot
 
 *** Keywords ***
+
+# ── Auth0 token acquisition ────────────────────────────────────────────────────
+
+Get Auth0 Bearer Token
+    [Documentation]
+    ...    Requests an M2M access token from Auth0 using client_credentials.
+    ...    Credentials default to the dev tenant values in variables.robot;
+    ...    override AUTH0_CLIENT_ID / AUTH0_CLIENT_SECRET via --variable for staging/prod.
+    [Arguments]    ${scope}=${AUTH0_SCOPE}
+    Create Session    _auth0    https://dev-iuo6si32jobgnmod.eu.auth0.com    verify=True
+    &{body}=    Create Dictionary
+    ...    client_id=${AUTH0_CLIENT_ID}
+    ...    client_secret=${AUTH0_CLIENT_SECRET}
+    ...    audience=${AUTH0_AUDIENCE}
+    ...    grant_type=client_credentials
+    ...    scope=${scope}
+    ${resp}=    POST On Session    _auth0    /oauth/token
+    ...    json=${body}    expected_status=200
+    ${token}=    Set Variable    ${resp.json()}[access_token]
+    Delete Session    _auth0
+    RETURN    ${token}
+
+# ── Session management ─────────────────────────────────────────────────────────
+
 Create Session To Service
-    [Documentation]    Opens an HTTP session to the MachineStateService
-    Create Session    machine    ${BASE_URL}    verify=False
+    [Documentation]
+    ...    Opens an authenticated HTTP session to MachineStateService.
+    ...    Fetches a Bearer token from Auth0 and sets it as the default header.
+    ${token}=    Get Auth0 Bearer Token
+    &{headers}=    Create Dictionary
+    ...    Authorization=Bearer ${token}
+    ...    Content-Type=application/json
+    Create Session    machine    ${BASE_URL}    headers=${headers}    verify=False
 
 Delete Session To Service
     Delete All Sessions
 
+# ── Machine queries ────────────────────────────────────────────────────────────
+
 Get All Machines
-    [Documentation]    Returns the full machine summary response
     ${resp}=    GET On Session    machine    /api/machines    expected_status=200
     RETURN    ${resp.json()}
 
 Get Machine By Id
-    [Documentation]    Returns single machine status response
     [Arguments]    ${machine_id}
     ${resp}=    GET On Session    machine    /api/machines/${machine_id}    expected_status=200
     RETURN    ${resp.json()}
@@ -29,7 +60,6 @@ Get Machine By Id Expecting Error
     RETURN    ${resp.json()}
 
 Start Cycle
-    [Documentation]    Posts a start-cycle request and returns the cycle record
     [Arguments]    ${machine_id}    ${cycle_type}=${CYCLE_TYPE_NORMAL}
     ...            ${duration}=${DURATION_30}    ${pulse_count}=${PULSE_1}
     ...            ${rfid_uid}=${RFID_UID}    ${tx_ref}=${TX_REF}
@@ -55,7 +85,6 @@ Start Cycle Expecting Error
     RETURN    ${resp.json()}
 
 Post Telemetry
-    [Documentation]    Sends HTTP telemetry as an ESP32 would
     [Arguments]    ${machine_id}    ${status}    ${cycle_type}=NONE    ${progress}=${0}
     ...            ${temperature}=${None}    ${door_locked}=${False}
     &{body}=    Create Dictionary
