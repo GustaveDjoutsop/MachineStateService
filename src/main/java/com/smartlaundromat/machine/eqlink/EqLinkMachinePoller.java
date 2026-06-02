@@ -1,7 +1,8 @@
 package com.smartlaundromat.machine.eqlink;
 
-import com.smartlaundromat.machine.eqlink.dto.EqMachineDto;
-import com.smartlaundromat.machine.eqlink.dto.EqMachineStateDto;
+import com.smartlaundromat.machine.eqlink.dto.EqCheckStatusResponse;
+import com.smartlaundromat.machine.eqlink.dto.EqDeviceInfo;
+import com.smartlaundromat.machine.eqlink.dto.EqDeviceItem;
 import com.smartlaundromat.machine.model.Machine;
 import com.smartlaundromat.machine.model.enums.MachineStatus;
 import com.smartlaundromat.machine.repository.MachineRepository;
@@ -17,11 +18,19 @@ import java.util.List;
 /**
  * Scheduled poller that syncs machine states from the EQLink cloud to the local database.
  *
- * <p>This component is only created when {@code eqlink.enabled=true} — when EQLink is
- * disabled the bean is not registered and no polling occurs.
+ * <p>Strategy:
+ * <ol>
+ *   <li>Call {@code get_device_list} to get all machines and their last known state.</li>
+ *   <li>For each machine that maps to an internal ID, call {@code iot_check_dev_status}
+ *       to get fresher real-time status.</li>
+ *   <li>Update the local {@link Machine} record accordingly.</li>
+ * </ol>
  *
- * <p>The poller acts as a fallback / supplement to real-time webhooks:
- * even if a webhook is missed, the state is reconciled on the next poll cycle.
+ * <p>This component is only instantiated when {@code eqlink.enabled=true} — when EQLink
+ * is disabled the bean is not created and no polling occurs.
+ *
+ * <p>The poller acts as a reconciliation fallback: even if a webhook is missed (EQLink
+ * has no webhooks), the state is corrected on the next poll cycle.
  */
 @Component
 @Slf4j
@@ -33,82 +42,113 @@ public class EqLinkMachinePoller {
     private final EqLinkProperties props;
     private final MachineRepository machineRepository;
 
-    /**
-     * Polls all EQLink devices at the configured interval and reconciles their
-     * state with the local database.
-     *
-     * <p>Uses {@code fixedDelay} (not {@code fixedRate}) so polls don't overlap
-     * if EQLink is slow to respond.
-     */
     @Scheduled(fixedDelayString = "${eqlink.poll-interval-ms:30000}")
     public void pollAllMachines() {
-        if (!props.isFullyConfigured()) {
-            return;
-        }
+        if (!props.isFullyConfigured()) return;
 
         log.debug("EQLink poll starting...");
-        List<EqMachineDto> devices = eqLinkClient.getMachines();
+        int updated = 0;
 
-        for (EqMachineDto device : devices) {
-            // Find the internal machine ID for this EQLink device ID
-            props.getMachineIdMapping().entrySet().stream()
-                    .filter(e -> device.getDeviceId().equals(e.getValue()))
-                    .map(e -> e.getKey())
-                    .findFirst()
-                    .ifPresent(internalId -> syncState(internalId, device.getDeviceId()));
+        List<EqDeviceItem> devices = eqLinkClient.getDeviceList();
+        for (EqDeviceItem device : devices) {
+            String internalId = resolveInternalId(device.getDevicename());
+            if (internalId == null) continue;
+
+            // For more accurate data call check_dev_status individually
+            EqCheckStatusResponse detailed = eqLinkClient.checkDeviceStatus(device.getDevicename());
+
+            machineRepository.findByMachineId(internalId).ifPresent(machine -> {
+                if (detailed != null && detailed.isSuccess()) {
+                    applyDetailedStatus(machine, detailed);
+                } else {
+                    applyListStatus(machine, device);
+                }
+                machineRepository.save(machine);
+            });
+            updated++;
         }
 
-        log.debug("EQLink poll done — {} devices checked", devices.size());
+        log.debug("EQLink poll done — {} machines synced", updated);
     }
 
-    // ── private ───────────────────────────────────────────────────────────────
+    // ── Status mapping ────────────────────────────────────────────────────────
 
-    private void syncState(String internalMachineId, String eqDeviceId) {
-        EqMachineStateDto state = eqLinkClient.getMachineState(eqDeviceId);
-        if (state == null) {
+    /**
+     * Applies the richer {@code iot_check_dev_status} response to the machine entity.
+     *
+     * <p>Status mapping from EQLink fields:
+     * <ul>
+     *   <li>offline (isonline=NO) → {@link MachineStatus#OFFLINE}</li>
+     *   <li>online + error (mach_errno≠0) → {@link MachineStatus#ERROR}</li>
+     *   <li>online + cycle running (cycle_start=1) → {@link MachineStatus#RUNNING}</li>
+     *   <li>online + available=1 → {@link MachineStatus#IDLE}</li>
+     *   <li>online + available=0 + no cycle → {@link MachineStatus#MAINTENANCE}</li>
+     * </ul>
+     */
+    private void applyDetailedStatus(Machine machine, EqCheckStatusResponse resp) {
+        boolean online = resp.isOnline();
+        machine.setIsOnline(online);
+        machine.setLastHeartbeat(LocalDateTime.now());
+
+        if (!online) {
+            machine.setStatus(MachineStatus.OFFLINE);
             return;
         }
 
-        machineRepository.findByMachineId(internalMachineId).ifPresent(machine -> {
-            MachineStatus newStatus = mapEqStatus(state.getStatus(), machine.getStatus());
-            String previousStatus = machine.getStatus().name();
+        EqDeviceInfo info = resp.getDeviceStatus();
+        if (info == null) {
+            machine.setStatus(MachineStatus.IDLE);
+            return;
+        }
 
-            machine.setStatus(newStatus);
-            machine.setIsOnline(!"offline".equalsIgnoreCase(state.getStatus()));
-            machine.setLastHeartbeat(LocalDateTime.now());
+        MachineStatus prev = machine.getStatus();
+        MachineStatus next = deriveStatus(info);
+        machine.setStatus(next);
 
-            if (state.getErrorCode() != null) {
-                machine.setErrorCode(state.getErrorCode());
-            }
-            if (state.getDoorLocked() != null) {
-                machine.setDoorLocked(state.getDoorLocked());
-            }
+        // Update machine error fields
+        if (info.getMachErrno() != null && info.getMachErrno() != 0) {
+            machine.setErrorCode("EQ-" + info.getMachErrno());
+        } else {
+            machine.setErrorCode(null);
+            machine.setErrorMessage(null);
+        }
 
-            machineRepository.save(machine);
-
-            if (!previousStatus.equals(newStatus.name())) {
-                log.info("EQLink sync: machine={} status changed {} → {}",
-                        internalMachineId, previousStatus, newStatus);
-            }
-        });
+        if (!prev.equals(next)) {
+            log.info("EQLink sync: machine={} {} → {}", machine.getMachineId(), prev, next);
+        }
     }
 
-    /**
-     * Maps EQLink status strings to our internal {@link MachineStatus} enum.
-     *
-     * @param eqStatus      raw EQLink status string (idle, running, fault, offline)
-     * @param currentStatus current internal status (used as fallback)
-     */
-    private MachineStatus mapEqStatus(String eqStatus, MachineStatus currentStatus) {
-        if (eqStatus == null) {
-            return currentStatus;
+    /** Applies the lighter {@code get_device_list} entry to the machine entity. */
+    private void applyListStatus(Machine machine, EqDeviceItem item) {
+        boolean online = item.getDeviceStatus() != null && item.getDeviceStatus().isOnline();
+        machine.setIsOnline(online);
+        machine.setLastHeartbeat(LocalDateTime.now());
+
+        if (!online) {
+            machine.setStatus(MachineStatus.OFFLINE);
+            return;
         }
-        return switch (eqStatus.toLowerCase()) {
-            case "idle"    -> MachineStatus.IDLE;
-            case "running" -> MachineStatus.RUNNING;
-            case "fault"   -> MachineStatus.ERROR;
-            case "offline" -> MachineStatus.OFFLINE;
-            default        -> currentStatus;
-        };
+
+        if (item.getDeviceInfo() != null) {
+            machine.setStatus(deriveStatus(item.getDeviceInfo()));
+        }
+    }
+
+    private MachineStatus deriveStatus(EqDeviceInfo info) {
+        if (info.hasError())         return MachineStatus.ERROR;
+        if (info.isCycleRunning())   return MachineStatus.RUNNING;
+        if (info.isAvailable())      return MachineStatus.IDLE;
+        return MachineStatus.MAINTENANCE;
+    }
+
+    // ── Mapping helpers ───────────────────────────────────────────────────────
+
+    private String resolveInternalId(String devicename) {
+        if (devicename == null) return null;
+        return props.getDeviceNameMapping().entrySet().stream()
+                .filter(e -> devicename.equals(e.getValue()))
+                .map(java.util.Map.Entry::getKey)
+                .findFirst()
+                .orElse(null);
     }
 }

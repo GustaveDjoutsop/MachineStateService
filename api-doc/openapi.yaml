@@ -5,7 +5,26 @@ info:
   description: |
     Machine state microservice for the SmartLaundromat ecosystem.
 
-    Manages washing machine lifecycle, receives ESP32 telemetry, and dispatches MQTT commands.
+    Manages washing machine lifecycle, receives ESP32 telemetry, and dispatches
+    machine commands via **EQLink IoT** (primary) and/or **MQTT** (fallback).
+
+    ### EQLink Integration
+    When `eqlink.enabled=true`, this service uses the **EQLink Open API v2** to:
+    - Poll machine states (`get_device_list`, `iot_check_dev_status`)
+    - Start machines remotely (`iot_start_device`)
+    - Generate BT start commands as a fallback (`bt_start_device`)
+
+    **EQLink auth uses MD5 signature** (NOT a Bearer token):
+    ```
+    sign = MD5(sorted_params + "&secret_key=YOUR_KEY").toUpperCase()
+    ```
+
+    **EQLink is NOT a payment system** — payments go through CamPay/MTN/Orange Money.
+
+    ### Command dispatch strategy
+    1. EQLink enabled + machine has `devicename` mapping → `iot_start_device` (primary)
+    2. If EQLink IoT times out (406) → MQTT pulse (fallback)
+    3. EQLink disabled → MQTT only
 
     ### How to get a token
     ```bash

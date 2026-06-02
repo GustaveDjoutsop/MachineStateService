@@ -4,7 +4,7 @@ import com.smartlaundromat.machine.config.MachineConfig;
 import com.smartlaundromat.machine.dto.*;
 import com.smartlaundromat.machine.eqlink.EqLinkClient;
 import com.smartlaundromat.machine.eqlink.EqLinkProperties;
-import com.smartlaundromat.machine.eqlink.dto.EqStartCommandRequest;
+
 import com.smartlaundromat.machine.exception.MachineNotFoundException;
 import com.smartlaundromat.machine.exception.MachineNotAvailableException;
 import com.smartlaundromat.machine.model.Machine;
@@ -199,32 +199,54 @@ public class MachineService {
     /**
      * Dispatches the start command using the configured strategy.
      *
-     * <ul>
-     *   <li>EQLink enabled + device mapped → EQLink REST API (primary) + MQTT (safety net)</li>
-     *   <li>EQLink enabled but not mapped  → MQTT only, with a warning</li>
-     *   <li>EQLink disabled                → MQTT only</li>
-     * </ul>
+     * <h3>Strategy</h3>
+     * <ol>
+     *   <li>If EQLink is enabled and the machine has a {@code devicename} mapping:
+     *     <ol>
+     *       <li>Call {@code iot_check_dev_status} to get the machine's current {@code vend_price}.</li>
+     *       <li>Compute {@code total_amt = pulseCount × vend_price}.</li>
+     *       <li>Send {@code iot_start_device}.</li>
+     *       <li>If EQLink IoT times out (406), fall back to MQTT automatically.</li>
+     *     </ol>
+     *   </li>
+     *   <li>Always also fire the MQTT pulse — belt-and-suspenders approach.</li>
+     *   <li>If EQLink is disabled or not mapped → MQTT only.</li>
+     * </ol>
      */
     private void dispatchStartCommand(StartCycleRequest request, CycleType cycleType) {
         boolean eqLinkDispatched = false;
 
         if (eqLinkProperties.isEnabled()) {
-            eqLinkDispatched = eqLinkProperties.resolveDeviceId(request.getMachineId())
-                    .map(eqDeviceId -> {
-                        EqStartCommandRequest cmd = EqStartCommandRequest.builder()
-                                .program(cycleType.name())
-                                .durationMinutes(request.getDurationMinutes())
-                                .transactionRef(request.getTransactionReference())
-                                .build();
-                        boolean ok = eqLinkClient.startMachine(eqDeviceId, cmd);
-                        if (!ok) {
-                            log.warn("EQLink start command failed for {}; MQTT will handle it",
-                                    request.getMachineId());
+            eqLinkDispatched = eqLinkProperties.resolveDeviceName(request.getMachineId())
+                    .map(devicename -> {
+                        // Step 1: get vend_price from a fresh status check
+                        int vendPrice = eqLinkProperties.getDefaultVendPrice();
+                        var statusResp = eqLinkClient.checkDeviceStatus(devicename);
+                        if (statusResp != null && statusResp.isSuccess()
+                                && statusResp.getDeviceStatus() != null
+                                && statusResp.getDeviceStatus().getVendPrice() != null
+                                && statusResp.getDeviceStatus().getVendPrice() > 0) {
+                            vendPrice = statusResp.getDeviceStatus().getVendPrice();
                         }
-                        return ok;
+
+                        // Step 2: send IoT start (total_amt = pulseCount × vend_price)
+                        var startResp = eqLinkClient.startDeviceIot(
+                                devicename, request.getPulseCount(), vendPrice);
+
+                        if (startResp == null) {
+                            log.warn("EQLink IoT start returned null for {} — MQTT will handle it",
+                                    request.getMachineId());
+                            return false;
+                        }
+                        if (startResp.isIotTimeout()) {
+                            log.warn("EQLink IoT timeout (406) for {} — MQTT is the fallback",
+                                    request.getMachineId());
+                            return false; // let MQTT handle it below
+                        }
+                        return startResp.isSuccess();
                     })
                     .orElseGet(() -> {
-                        log.warn("EQLink enabled but no device mapping for {} — using MQTT only",
+                        log.warn("EQLink enabled but no devicename mapping for {} — using MQTT only",
                                 request.getMachineId());
                         return false;
                     });
@@ -284,10 +306,8 @@ public class MachineService {
         Machine machine = machineRepository.findByMachineId(machineId)
                 .orElseThrow(() -> new MachineNotFoundException("Machine not found: " + machineId));
 
-        if ("stop".equalsIgnoreCase(action) && eqLinkProperties.isEnabled()) {
-            eqLinkProperties.resolveDeviceId(machineId)
-                    .ifPresent(eqLinkClient::stopMachine);
-        }
+        // Note: EQLink has no remote stop endpoint in its v2 API.
+        // A stop command can only be issued via MQTT to the local ESP32 relay.
         mqttService.sendCommand(machineId, action, null);
 
         recordEvent(machineId, "COMMAND_SENT",

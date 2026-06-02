@@ -51,17 +51,25 @@ auth0-client:
   secret: ${AUTH0_CLIENT_SECRET:5_L-EOe5BBn3g2V9egVHWnKJkabkxtqom4kIqxluEx8J0N6VEbFtG7XPdoCZln7G}
   token-url: https://dev-iuo6si32jobgnmod.eu.auth0.com/oauth/token
 
-# ── EQLink integration (dev) ─────────────────────────────────────────────────
-# Set EQLINK_ENABLED=true + EQLINK_API_KEY=<your-key> to activate.
-# The machine-id-mapping links internal IDs to EQLink device IDs — request the
-# actual device IDs from EQLink support (+86 186 5325 0609 / eqlink.top).
+# ── EQLink Open API v2 (dev) ─────────────────────────────────────────────────
+# EQLink is a machine CONTROL platform. Auth uses MD5 signature (NOT Bearer token).
+# Obtain vendor_id, app_id, secret_key from EQLink admin: +86 186 5325 0609 / eqlink.top
+#
+# Authentication formula:
+#   sign = MD5(sorted_params + "&secret_key=SECRET_KEY").toUpperCase()
+#
+# device-name-mapping: maps your internal machine IDs to EQLink devicename serials.
+# Get the actual devicename values by calling get_device_list after setup.
 eqlink:
   enabled: ${EQLINK_ENABLED:false}
-  base-url: ${EQLINK_BASE_URL:https://api.eqlink.top}
-  api-key: ${EQLINK_API_KEY:}
-  webhook-secret: ${EQLINK_WEBHOOK_SECRET:}
+  base-url: ${EQLINK_BASE_URL:https://tokyo.anlun.vip}
+  vendor-id: ${EQLINK_VENDOR_ID:}
+  app-id: ${EQLINK_APP_ID:}
+  secret-key: ${EQLINK_SECRET_KEY:}
+  wifi-ssid: ${EQLINK_WIFI_SSID:EQLink}
   poll-interval-ms: 30000
-  machine-id-mapping:
+  default-vend-price: ${EQLINK_DEFAULT_VEND_PRICE:10}
+  device-name-mapping:
     washer_01: ${EQLINK_DEVICE_WASHER_01:}
     washer_02: ${EQLINK_DEVICE_WASHER_02:}
     washer_03: ${EQLINK_DEVICE_WASHER_03:}

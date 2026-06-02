@@ -52,18 +52,28 @@ machine:
 payment-service:
   base-url: http://localhost:8081
 
-# ── EQLink cloud integration ──────────────────────────────────────────────────
-# Set enabled: true to activate EQLink for machine control + state monitoring.
-# When disabled (default), all machine commands go through MQTT only.
+# ── EQLink Open API v2 integration ───────────────────────────────────────────
+# EQLink is a machine CONTROL platform (not a payment system).
+# Set enabled: true to activate. When disabled, all commands go through MQTT only.
+#
+# Auth uses MD5 signature (NOT a Bearer token):
+#   sign = MD5(sorted_params + "&secret_key=SECRET_KEY").toUpperCase()
+#
+# All API calls are POST to: {base-url}/api/open/v2/Device/<endpoint>
 eqlink:
   enabled: ${EQLINK_ENABLED:false}
-  base-url: ${EQLINK_BASE_URL:https://api.eqlink.top}
-  api-key: ${EQLINK_API_KEY:}
-  webhook-secret: ${EQLINK_WEBHOOK_SECRET:}
+  base-url: ${EQLINK_BASE_URL:https://tokyo.anlun.vip}
+  vendor-id: ${EQLINK_VENDOR_ID:}
+  app-id: ${EQLINK_APP_ID:}
+  secret-key: ${EQLINK_SECRET_KEY:}
+  wifi-ssid: ${EQLINK_WIFI_SSID:}
   poll-interval-ms: ${EQLINK_POLL_INTERVAL_MS:30000}
-  # Map internal machine IDs → EQLink device IDs (configure in ci/dev.yaml or via env vars)
-  # Example: machine-id-mapping.washer_01: EQ-DEVICE-W01
-  machine-id-mapping: {}
+  # Default vend_price per pulse. Override via status check or per-machine config.
+  # total_amt = pulse_count × default-vend-price
+  default-vend-price: ${EQLINK_DEFAULT_VEND_PRICE:10}
+  # Maps internal machine IDs to EQLink devicename (module serial numbers).
+  # Configure via EQLINK_DEVICE_* env vars or in ci/dev.yaml.
+  device-name-mapping: {}
 
 # ── Security: Auth0 Resource Server ──────────────────────────────────────────
 spring:
