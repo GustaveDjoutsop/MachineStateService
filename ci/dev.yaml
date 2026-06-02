@@ -51,35 +51,49 @@ auth0-client:
   secret: ${AUTH0_CLIENT_SECRET:5_L-EOe5BBn3g2V9egVHWnKJkabkxtqom4kIqxluEx8J0N6VEbFtG7XPdoCZln7G}
   token-url: https://dev-iuo6si32jobgnmod.eu.auth0.com/oauth/token
 
-# ── EQLink Open API v2 (dev) ─────────────────────────────────────────────────
-# EQLink is a machine CONTROL platform. Auth uses MD5 signature (NOT Bearer token).
-# Obtain vendor_id, app_id, secret_key from EQLink admin: +86 186 5325 0609 / eqlink.top
+# ── EQLink Open API v2 — LOCAL MOCK (dev) ────────────────────────────────────
 #
-# Authentication formula:
+# Pointing to the WireMock simulator (eqlink-mock/).
+# Start it first:  docker compose -f eqlink-mock/docker-compose.yml up -d
+#
+# Authentication formula (MD5):
 #   sign = MD5(sorted_params + "&secret_key=SECRET_KEY").toUpperCase()
 #
-# device-name-mapping: maps your internal machine IDs to EQLink devicename serials.
-# Get the actual devicename values by calling get_device_list after setup.
+# The mock accepts ANY vendor_id/app_id/secret_key — the signature is not
+# verified by the mock. Use the values below so EqLinkSignatureUtil runs
+# through its full path and the log shows a computed sign.
+#
+# Machine states (IDLE / RUNNING) are tracked per machine via WireMock scenarios.
+# Reset all to IDLE:        bash eqlink-mock/scripts/reset-all-machines.sh
+# Reset single machine:     bash eqlink-mock/scripts/reset-machine.sh washer_01
+# Show current states:      bash eqlink-mock/scripts/show-machine-states.sh
+#
+# Switch to real EQLink later by replacing base-url and credentials:
+#   base-url: https://tokyo.anlun.vip
+#   vendor-id: <from EQLink support +86 186 5325 0609>
+#   app-id: <from EQLink support>
+#   secret-key: <from EQLink support>
+#   device-name-mapping: <real serial numbers from get_device_list>
 eqlink:
-  enabled: ${EQLINK_ENABLED:false}
-  base-url: ${EQLINK_BASE_URL:https://tokyo.anlun.vip}
-  vendor-id: ${EQLINK_VENDOR_ID:}
-  app-id: ${EQLINK_APP_ID:}
-  secret-key: ${EQLINK_SECRET_KEY:}
-  wifi-ssid: ${EQLINK_WIFI_SSID:EQLink}
+  enabled: true
+  base-url: http://localhost:9099        # WireMock EQLink simulator
+  vendor-id: "MOCK-VENDOR-001"
+  app-id: "MOCK-APP-ID-001"
+  secret-key: "MOCK-SECRET-KEY-001"
+  wifi-ssid: "EQLink-Mock"
   poll-interval-ms: 30000
-  default-vend-price: ${EQLINK_DEFAULT_VEND_PRICE:10}
+  default-vend-price: 10
   device-name-mapping:
-    washer_01: ${EQLINK_DEVICE_WASHER_01:}
-    washer_02: ${EQLINK_DEVICE_WASHER_02:}
-    washer_03: ${EQLINK_DEVICE_WASHER_03:}
-    washer_04: ${EQLINK_DEVICE_WASHER_04:}
-    washer_05: ${EQLINK_DEVICE_WASHER_05:}
-    washer_06: ${EQLINK_DEVICE_WASHER_06:}
-    dryer_01: ${EQLINK_DEVICE_DRYER_01:}
-    dryer_02: ${EQLINK_DEVICE_DRYER_02:}
-    dryer_03: ${EQLINK_DEVICE_DRYER_03:}
-    dryer_04: ${EQLINK_DEVICE_DRYER_04:}
+    washer_01: "MOCK-W01"
+    washer_02: "MOCK-W02"
+    washer_03: "MOCK-W03"
+    washer_04: "MOCK-W04"
+    washer_05: "MOCK-W05"
+    washer_06: "MOCK-W06"
+    dryer_01:  "MOCK-D01"
+    dryer_02:  "MOCK-D02"
+    dryer_03:  "MOCK-D03"
+    dryer_04:  "MOCK-D04"
 
 # ── MQTT: local broker for dev ───────────────────────────────────────────────
 mqtt:
