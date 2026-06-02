@@ -2,6 +2,9 @@ package com.smartlaundromat.machine.service;
 
 import com.smartlaundromat.machine.config.MachineConfig;
 import com.smartlaundromat.machine.dto.*;
+import com.smartlaundromat.machine.eqlink.EqLinkClient;
+import com.smartlaundromat.machine.eqlink.EqLinkProperties;
+import com.smartlaundromat.machine.eqlink.dto.EqStartCommandRequest;
 import com.smartlaundromat.machine.exception.MachineNotFoundException;
 import com.smartlaundromat.machine.exception.MachineNotAvailableException;
 import com.smartlaundromat.machine.model.Machine;
@@ -23,6 +26,18 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Core machine lifecycle service.
+ *
+ * <h2>Command dispatch strategy</h2>
+ * <ol>
+ *   <li>If {@code eqlink.enabled=true} <em>and</em> the machine has an EQLink device
+ *       mapping → send the start command via EQLink REST API.</li>
+ *   <li>Always also send the MQTT pulse (to the ESP32 local relay) as a safety net
+ *       so the machine starts even when EQLink has a hiccup.</li>
+ *   <li>If EQLink is disabled → use MQTT only (existing behaviour).</li>
+ * </ol>
+ */
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -34,11 +49,22 @@ public class MachineService {
     private final MachineConfig machineConfig;
     private final MqttService mqttService;
 
+    /** EQLink integration — always injected; all methods are no-ops when disabled. */
+    private final EqLinkClient eqLinkClient;
+    private final EqLinkProperties eqLinkProperties;
+
     @PostConstruct
     public void init() {
         mqttService.setMachineService(this);
         initializeMachines();
+        if (eqLinkProperties.isEnabled()) {
+            log.info("EQLink integration ENABLED — machines will be controlled via EQLink + MQTT");
+        } else {
+            log.info("EQLink integration DISABLED — machines will be controlled via MQTT only");
+        }
     }
+
+    // ── Machine initialization ────────────────────────────────────────────────
 
     private void initializeMachines() {
         for (String machineId : machineConfig.getAvailableIds()) {
@@ -57,6 +83,8 @@ public class MachineService {
         }
     }
 
+    // ── Telemetry ─────────────────────────────────────────────────────────────
+
     @Transactional
     public void processTelemetry(TelemetryPayload telemetry) {
         Machine machine = machineRepository.findByMachineId(telemetry.getMachineId())
@@ -72,32 +100,27 @@ public class MachineService {
         if (telemetry.getStatus() != null) {
             try {
                 machine.setStatus(MachineStatus.valueOf(telemetry.getStatus().toUpperCase()));
-            } catch (IllegalArgumentException ignored) {
-            }
+            } catch (IllegalArgumentException ignored) { }
         }
-
         if (telemetry.getCycleType() != null) {
             try {
                 machine.setCurrentCycleType(CycleType.valueOf(telemetry.getCycleType().toUpperCase()));
-            } catch (IllegalArgumentException ignored) {
-            }
+            } catch (IllegalArgumentException ignored) { }
         }
-
-        if (telemetry.getCycleProgress() != null) machine.setCycleProgress(telemetry.getCycleProgress());
-        if (telemetry.getTemperature() != null) machine.setTemperature(telemetry.getTemperature());
-        if (telemetry.getHumidity() != null) machine.setHumidity(telemetry.getHumidity());
-        if (telemetry.getWaterLevel() != null) machine.setWaterLevel(telemetry.getWaterLevel());
-        if (telemetry.getSpinSpeed() != null) machine.setSpinSpeed(telemetry.getSpinSpeed());
-        if (telemetry.getVibration() != null) machine.setVibration(telemetry.getVibration());
-        if (telemetry.getDoorLocked() != null) machine.setDoorLocked(telemetry.getDoorLocked());
-        if (telemetry.getPowerConsumption() != null) machine.setPowerConsumption(telemetry.getPowerConsumption());
-        if (telemetry.getErrorCode() != null) machine.setErrorCode(telemetry.getErrorCode());
-        if (telemetry.getErrorMessage() != null) machine.setErrorMessage(telemetry.getErrorMessage());
-        if (telemetry.getTotalCycles() != null) machine.setTotalCycles(telemetry.getTotalCycles());
+        if (telemetry.getCycleProgress() != null)    machine.setCycleProgress(telemetry.getCycleProgress());
+        if (telemetry.getTemperature() != null)       machine.setTemperature(telemetry.getTemperature());
+        if (telemetry.getHumidity() != null)          machine.setHumidity(telemetry.getHumidity());
+        if (telemetry.getWaterLevel() != null)        machine.setWaterLevel(telemetry.getWaterLevel());
+        if (telemetry.getSpinSpeed() != null)         machine.setSpinSpeed(telemetry.getSpinSpeed());
+        if (telemetry.getVibration() != null)         machine.setVibration(telemetry.getVibration());
+        if (telemetry.getDoorLocked() != null)        machine.setDoorLocked(telemetry.getDoorLocked());
+        if (telemetry.getPowerConsumption() != null)  machine.setPowerConsumption(telemetry.getPowerConsumption());
+        if (telemetry.getErrorCode() != null)         machine.setErrorCode(telemetry.getErrorCode());
+        if (telemetry.getErrorMessage() != null)      machine.setErrorMessage(telemetry.getErrorMessage());
+        if (telemetry.getTotalCycles() != null)       machine.setTotalCycles(telemetry.getTotalCycles());
 
         machine.setIsOnline(true);
         machine.setLastHeartbeat(LocalDateTime.now());
-
         machineRepository.save(machine);
 
         String newStatus = machine.getStatus().name();
@@ -106,6 +129,8 @@ public class MachineService {
                     previousStatus, newStatus, "Telemetry update", null, null);
         }
     }
+
+    // ── Cycle management ──────────────────────────────────────────────────────
 
     @Transactional
     public MachineCycle startCycle(StartCycleRequest request) {
@@ -119,7 +144,8 @@ public class MachineService {
 
         machineCycleRepository.findByMachineIdAndStatus(request.getMachineId(), CycleStatus.IN_PROGRESS)
                 .ifPresent(c -> {
-                    throw new MachineNotAvailableException("Machine " + request.getMachineId() + " already has an active cycle");
+                    throw new MachineNotAvailableException(
+                            "Machine " + request.getMachineId() + " already has an active cycle");
                 });
 
         LocalDateTime now = LocalDateTime.now();
@@ -132,6 +158,7 @@ public class MachineService {
             cycleType = CycleType.NORMAL;
         }
 
+        // ── Persist cycle record ──────────────────────────────────────────────
         MachineCycle cycle = MachineCycle.builder()
                 .machineId(request.getMachineId())
                 .cycleType(cycleType)
@@ -154,38 +181,84 @@ public class MachineService {
         machine.setDoorLocked(true);
         machineRepository.save(machine);
 
-        mqttService.sendCommand(request.getMachineId(), "pulse", request.getPulseCount());
+        // ── Command dispatch: EQLink + MQTT ───────────────────────────────────
+        dispatchStartCommand(request, cycleType);
 
         recordEvent(request.getMachineId(), "CYCLE_STARTED",
-                "IDLE", "RUNNING",
+                MachineStatus.IDLE.name(), MachineStatus.RUNNING.name(),
                 "Cycle: " + cycleType + ", Duration: " + request.getDurationMinutes() + "min",
                 request.getRfidCardUid(), request.getTransactionReference());
 
-        log.info("Cycle started: machine={}, type={}, duration={}min, endsAt={}",
-                request.getMachineId(), cycleType, request.getDurationMinutes(), endsAt);
+        log.info("Cycle started: machine={}, type={}, duration={}min, eqlink={}, endsAt={}",
+                request.getMachineId(), cycleType, request.getDurationMinutes(),
+                eqLinkProperties.isEnabled(), endsAt);
 
         return cycle;
     }
 
+    /**
+     * Dispatches the start command using the configured strategy.
+     *
+     * <ul>
+     *   <li>EQLink enabled + device mapped → EQLink REST API (primary) + MQTT (safety net)</li>
+     *   <li>EQLink enabled but not mapped  → MQTT only, with a warning</li>
+     *   <li>EQLink disabled                → MQTT only</li>
+     * </ul>
+     */
+    private void dispatchStartCommand(StartCycleRequest request, CycleType cycleType) {
+        boolean eqLinkDispatched = false;
+
+        if (eqLinkProperties.isEnabled()) {
+            eqLinkDispatched = eqLinkProperties.resolveDeviceId(request.getMachineId())
+                    .map(eqDeviceId -> {
+                        EqStartCommandRequest cmd = EqStartCommandRequest.builder()
+                                .program(cycleType.name())
+                                .durationMinutes(request.getDurationMinutes())
+                                .transactionRef(request.getTransactionReference())
+                                .build();
+                        boolean ok = eqLinkClient.startMachine(eqDeviceId, cmd);
+                        if (!ok) {
+                            log.warn("EQLink start command failed for {}; MQTT will handle it",
+                                    request.getMachineId());
+                        }
+                        return ok;
+                    })
+                    .orElseGet(() -> {
+                        log.warn("EQLink enabled but no device mapping for {} — using MQTT only",
+                                request.getMachineId());
+                        return false;
+                    });
+        }
+
+        // Always fire the MQTT pulse as well (belt-and-suspenders):
+        // - When EQLink is disabled: MQTT is the sole trigger
+        // - When EQLink succeeds:    MQTT acts as a local relay fallback
+        // - When EQLink fails:       MQTT becomes the primary trigger
+        mqttService.sendCommand(request.getMachineId(), "pulse", request.getPulseCount());
+
+        log.debug("Command dispatch: machine={}, eqlink={}, mqtt=sent",
+                request.getMachineId(), eqLinkDispatched ? "sent" : "skipped");
+    }
+
+    // ── Queries ───────────────────────────────────────────────────────────────
+
     public MachineStatusResponse getMachineStatus(String machineId) {
         Machine machine = machineRepository.findByMachineId(machineId)
                 .orElseThrow(() -> new MachineNotFoundException("Machine not found: " + machineId));
-
         return toStatusResponse(machine);
     }
 
     public MachineSummaryResponse getAllMachines() {
         List<Machine> machines = machineRepository.findAll();
-
         List<MachineStatusResponse> responses = machines.stream()
                 .map(this::toStatusResponse)
                 .collect(Collectors.toList());
 
-        int available = (int) machines.stream().filter(Machine::isAvailable).count();
-        int inUse = (int) machines.stream().filter(m -> m.getStatus() == MachineStatus.RUNNING).count();
-        int offline = (int) machines.stream().filter(m -> !m.getIsOnline()).count();
-        int error = (int) machines.stream().filter(m -> m.getStatus() == MachineStatus.ERROR).count();
-        int maintenance = (int) machines.stream().filter(m -> m.getStatus() == MachineStatus.MAINTENANCE).count();
+        int available    = (int) machines.stream().filter(Machine::isAvailable).count();
+        int inUse        = (int) machines.stream().filter(m -> m.getStatus() == MachineStatus.RUNNING).count();
+        int offline      = (int) machines.stream().filter(m -> !m.getIsOnline()).count();
+        int error        = (int) machines.stream().filter(m -> m.getStatus() == MachineStatus.ERROR).count();
+        int maintenance  = (int) machines.stream().filter(m -> m.getStatus() == MachineStatus.MAINTENANCE).count();
 
         return MachineSummaryResponse.builder()
                 .machines(responses)
@@ -211,12 +284,17 @@ public class MachineService {
         Machine machine = machineRepository.findByMachineId(machineId)
                 .orElseThrow(() -> new MachineNotFoundException("Machine not found: " + machineId));
 
+        if ("stop".equalsIgnoreCase(action) && eqLinkProperties.isEnabled()) {
+            eqLinkProperties.resolveDeviceId(machineId)
+                    .ifPresent(eqLinkClient::stopMachine);
+        }
         mqttService.sendCommand(machineId, action, null);
 
         recordEvent(machineId, "COMMAND_SENT",
-                machine.getStatus().name(), null,
-                "Command: " + action, null, null);
+                machine.getStatus().name(), null, "Command: " + action, null, null);
     }
+
+    // ── Mapping ───────────────────────────────────────────────────────────────
 
     private MachineStatusResponse toStatusResponse(Machine machine) {
         Integer remainingMinutes = null;

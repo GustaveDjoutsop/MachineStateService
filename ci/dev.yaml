@@ -51,6 +51,28 @@ auth0-client:
   secret: ${AUTH0_CLIENT_SECRET:5_L-EOe5BBn3g2V9egVHWnKJkabkxtqom4kIqxluEx8J0N6VEbFtG7XPdoCZln7G}
   token-url: https://dev-iuo6si32jobgnmod.eu.auth0.com/oauth/token
 
+# ── EQLink integration (dev) ─────────────────────────────────────────────────
+# Set EQLINK_ENABLED=true + EQLINK_API_KEY=<your-key> to activate.
+# The machine-id-mapping links internal IDs to EQLink device IDs — request the
+# actual device IDs from EQLink support (+86 186 5325 0609 / eqlink.top).
+eqlink:
+  enabled: ${EQLINK_ENABLED:false}
+  base-url: ${EQLINK_BASE_URL:https://api.eqlink.top}
+  api-key: ${EQLINK_API_KEY:}
+  webhook-secret: ${EQLINK_WEBHOOK_SECRET:}
+  poll-interval-ms: 30000
+  machine-id-mapping:
+    washer_01: ${EQLINK_DEVICE_WASHER_01:}
+    washer_02: ${EQLINK_DEVICE_WASHER_02:}
+    washer_03: ${EQLINK_DEVICE_WASHER_03:}
+    washer_04: ${EQLINK_DEVICE_WASHER_04:}
+    washer_05: ${EQLINK_DEVICE_WASHER_05:}
+    washer_06: ${EQLINK_DEVICE_WASHER_06:}
+    dryer_01: ${EQLINK_DEVICE_DRYER_01:}
+    dryer_02: ${EQLINK_DEVICE_DRYER_02:}
+    dryer_03: ${EQLINK_DEVICE_DRYER_03:}
+    dryer_04: ${EQLINK_DEVICE_DRYER_04:}
+
 # ── MQTT: local broker for dev ───────────────────────────────────────────────
 mqtt:
   broker-url: tcp://localhost:1883

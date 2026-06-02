@@ -52,6 +52,19 @@ machine:
 payment-service:
   base-url: http://localhost:8081
 
+# ── EQLink cloud integration ──────────────────────────────────────────────────
+# Set enabled: true to activate EQLink for machine control + state monitoring.
+# When disabled (default), all machine commands go through MQTT only.
+eqlink:
+  enabled: ${EQLINK_ENABLED:false}
+  base-url: ${EQLINK_BASE_URL:https://api.eqlink.top}
+  api-key: ${EQLINK_API_KEY:}
+  webhook-secret: ${EQLINK_WEBHOOK_SECRET:}
+  poll-interval-ms: ${EQLINK_POLL_INTERVAL_MS:30000}
+  # Map internal machine IDs → EQLink device IDs (configure in ci/dev.yaml or via env vars)
+  # Example: machine-id-mapping.washer_01: EQ-DEVICE-W01
+  machine-id-mapping: {}
+
 # ── Security: Auth0 Resource Server ──────────────────────────────────────────
 spring:
   security:

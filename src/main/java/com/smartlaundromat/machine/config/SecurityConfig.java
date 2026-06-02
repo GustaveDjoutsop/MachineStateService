@@ -74,6 +74,9 @@ public class SecurityConfig {
                 .requestMatchers("/h2-console/**").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/info").permitAll()
 
+                // ── Public: EQLink webhook (HMAC-verified inside the controller) ──
+                .requestMatchers(HttpMethod.POST, "/api/eqlink/webhook").permitAll()
+
                 // ── ESP32 telemetry (device posts sensor data) ──
                 .requestMatchers(HttpMethod.POST, "/api/esp32/telemetry")
                     .hasAuthority("SCOPE_sls-telemetry-write")
