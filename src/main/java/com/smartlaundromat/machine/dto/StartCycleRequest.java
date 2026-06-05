@@ -21,4 +21,11 @@ public class StartCycleRequest {
 
     private String rfidCardUid;
     private String transactionReference;
+
+    /**
+     * Reservation code, required only when the target machine is currently held by an
+     * active reservation (and the reservation feature is enabled). Cross-checked by
+     * code + machine — not by user.
+     */
+    private String reservationCode;
 }

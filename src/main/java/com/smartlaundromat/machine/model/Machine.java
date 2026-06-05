@@ -1,5 +1,6 @@
 package com.smartlaundromat.machine.model;
 
+import com.smartlaundromat.machine.model.enums.CommProtocol;
 import com.smartlaundromat.machine.model.enums.CycleType;
 import com.smartlaundromat.machine.model.enums.MachineStatus;
 import com.smartlaundromat.machine.model.enums.MachineType;
@@ -39,6 +40,12 @@ public class Machine {
     @Column(nullable = false, length = 20)
     @Builder.Default
     private MachineStatus status = MachineStatus.IDLE;
+
+    /** Remote-control transport used to start/stop this machine (EQLink, Modbus RTU, or MQTT). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "comm_protocol", nullable = false, length = 10)
+    @Builder.Default
+    private CommProtocol commProtocol = CommProtocol.MQTT;
 
     @Column(name = "is_online", nullable = false)
     @Builder.Default

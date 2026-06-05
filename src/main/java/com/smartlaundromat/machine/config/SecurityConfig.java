@@ -94,6 +94,15 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/machines/*/command/**")
                     .hasAuthority("SCOPE_sls-machine-command")
 
+                // ── Reservations: write (create / activate) ──
+                .requestMatchers(HttpMethod.POST, "/api/reservations", "/api/reservations/activate")
+                    .hasAuthority("SCOPE_sls-reservation-write")
+                // ── Reservations: read (validate code+machine / lookups) ──
+                .requestMatchers(HttpMethod.POST, "/api/reservations/validate")
+                    .hasAuthority("SCOPE_sls-reservation-read")
+                .requestMatchers(HttpMethod.GET, "/api/reservations/**")
+                    .hasAuthority("SCOPE_sls-reservation-read")
+
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2

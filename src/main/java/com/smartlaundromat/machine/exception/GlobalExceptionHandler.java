@@ -24,6 +24,11 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, "MACHINE_NOT_AVAILABLE", ex.getMessage());
     }
 
+    @ExceptionHandler(ReservationException.class)
+    public ResponseEntity<Map<String, Object>> handleReservation(ReservationException ex) {
+        return buildResponse(HttpStatus.CONFLICT, "RESERVATION_ERROR", ex.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> fieldErrors = new HashMap<>();

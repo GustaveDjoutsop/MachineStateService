@@ -4,6 +4,9 @@ import com.smartlaundromat.machine.config.MachineConfig;
 import com.smartlaundromat.machine.dto.*;
 import com.smartlaundromat.machine.eqlink.EqLinkClient;
 import com.smartlaundromat.machine.eqlink.EqLinkProperties;
+import com.smartlaundromat.machine.modbus.ModbusClient;
+import com.smartlaundromat.machine.modbus.ModbusProperties;
+import com.smartlaundromat.machine.model.Reservation;
 
 import com.smartlaundromat.machine.exception.MachineNotFoundException;
 import com.smartlaundromat.machine.exception.MachineNotAvailableException;
@@ -53,15 +56,20 @@ public class MachineService {
     private final EqLinkClient eqLinkClient;
     private final EqLinkProperties eqLinkProperties;
 
+    /** Modbus RTU integration — always injected; all methods are no-ops when disabled. */
+    private final ModbusClient modbusClient;
+    private final ModbusProperties modbusProperties;
+
+    /** Reservation gating — enforces that reserved machines need a valid code to start. */
+    private final ReservationService reservationService;
+
     @PostConstruct
     public void init() {
         mqttService.setMachineService(this);
         initializeMachines();
-        if (eqLinkProperties.isEnabled()) {
-            log.info("EQLink integration ENABLED — machines will be controlled via EQLink + MQTT");
-        } else {
-            log.info("EQLink integration DISABLED — machines will be controlled via MQTT only");
-        }
+        log.info("EQLink integration {} — Modbus RTU integration {}",
+                eqLinkProperties.isEnabled() ? "ENABLED" : "DISABLED",
+                modbusProperties.isEnabled() ? "ENABLED" : "DISABLED");
     }
 
     // ── Machine initialization ────────────────────────────────────────────────
@@ -76,11 +84,27 @@ public class MachineService {
                         .machineId(machineId)
                         .type(type)
                         .position(position)
+                        .commProtocol(resolveProtocol(machineId))
                         .build();
                 machineRepository.save(machine);
-                log.info("Initialized machine: {}", machineId);
+                log.info("Initialized machine: {} (protocol={})", machineId, machine.getCommProtocol());
             }
         }
+    }
+
+    /**
+     * Decides which transport a machine uses, by precedence:
+     * Modbus mapping → {@link CommProtocol#MODBUS}; EQLink mapping → {@link CommProtocol#EQLINK};
+     * otherwise {@link CommProtocol#MQTT}.
+     */
+    private CommProtocol resolveProtocol(String machineId) {
+        if (modbusProperties.getUnitIdMapping().containsKey(machineId)) {
+            return CommProtocol.MODBUS;
+        }
+        if (eqLinkProperties.getDeviceNameMapping().containsKey(machineId)) {
+            return CommProtocol.EQLINK;
+        }
+        return CommProtocol.MQTT;
     }
 
     // ── Telemetry ─────────────────────────────────────────────────────────────
@@ -148,6 +172,22 @@ public class MachineService {
                             "Machine " + request.getMachineId() + " already has an active cycle");
                 });
 
+        // ── Reservation gating ────────────────────────────────────────────────
+        // If the feature is on and this machine is currently held by an active reservation,
+        // the start request MUST carry the matching reservation code (checked by code + machine,
+        // not by user). A valid code is consumed (marked USED) here.
+        reservationService.activeReservationCovering(request.getMachineId()).ifPresent(reserved -> {
+            if (request.getReservationCode() == null || request.getReservationCode().isBlank()) {
+                throw new MachineNotAvailableException(
+                        "Machine " + request.getMachineId()
+                                + " is reserved right now — a reservation code is required to start it");
+            }
+            Reservation consumed = reservationService.validateAndConsume(
+                    request.getReservationCode().trim(), request.getMachineId());
+            log.info("Reservation {} redeemed to start machine {}",
+                    consumed.getReservationCode(), request.getMachineId());
+        });
+
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime endsAt = now.plusMinutes(request.getDurationMinutes());
 
@@ -181,8 +221,8 @@ public class MachineService {
         machine.setDoorLocked(true);
         machineRepository.save(machine);
 
-        // ── Command dispatch: EQLink + MQTT ───────────────────────────────────
-        dispatchStartCommand(request, cycleType);
+        // ── Command dispatch: EQLink / Modbus + MQTT ──────────────────────────
+        dispatchStartCommand(machine, request, cycleType);
 
         recordEvent(request.getMachineId(), "CYCLE_STARTED",
                 MachineStatus.IDLE.name(), MachineStatus.RUNNING.name(),
@@ -213,10 +253,27 @@ public class MachineService {
      *   <li>If EQLink is disabled or not mapped → MQTT only.</li>
      * </ol>
      */
-    private void dispatchStartCommand(StartCycleRequest request, CycleType cycleType) {
+    private void dispatchStartCommand(Machine machine, StartCycleRequest request, CycleType cycleType) {
+        boolean primaryDispatched = false;
+
+        // ── Modbus RTU machines ───────────────────────────────────────────────
+        if (machine.getCommProtocol() == CommProtocol.MODBUS && modbusProperties.isEnabled()) {
+            int program = modbusProgramFor(cycleType);
+            primaryDispatched = modbusClient.startMachine(
+                    request.getMachineId(), request.getPulseCount(), program);
+            if (!primaryDispatched) {
+                log.warn("Modbus start did not ack for {} — MQTT is the fallback", request.getMachineId());
+            }
+            // MQTT safety net + done (Modbus machines are not on EQLink).
+            mqttService.sendCommand(request.getMachineId(), "pulse", request.getPulseCount());
+            log.debug("Command dispatch: machine={}, modbus={}, mqtt=sent",
+                    request.getMachineId(), primaryDispatched ? "sent" : "skipped");
+            return;
+        }
+
         boolean eqLinkDispatched = false;
 
-        if (eqLinkProperties.isEnabled()) {
+        if (machine.getCommProtocol() == CommProtocol.EQLINK && eqLinkProperties.isEnabled()) {
             eqLinkDispatched = eqLinkProperties.resolveDeviceName(request.getMachineId())
                     .map(devicename -> {
                         // Step 1: get vend_price from a fresh status check
@@ -260,6 +317,18 @@ public class MachineService {
 
         log.debug("Command dispatch: machine={}, eqlink={}, mqtt=sent",
                 request.getMachineId(), eqLinkDispatched ? "sent" : "skipped");
+    }
+
+    /**
+     * Maps a {@link CycleType} to a Modbus program number (1–3) for register
+     * {@code REG_SELECT_PROGRAM}. Short/quick → 1, normal → 2, heavy/long → 3.
+     */
+    private int modbusProgramFor(CycleType cycleType) {
+        return switch (cycleType) {
+            case QUICK, DELICATE, LOW_HEAT, COTTON_40 -> 1;
+            case HEAVY, SANITIZE, HIGH_HEAT, COTTON_90 -> 3;
+            default -> 2;
+        };
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────

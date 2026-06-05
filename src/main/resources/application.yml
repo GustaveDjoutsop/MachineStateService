@@ -25,6 +25,13 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.H2Dialect
 
+  # ── Security: Auth0 Resource Server ──────────────────────────────────────────
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH0_ISSUER_URI:https://dev-iuo6si32jobgnmod.eu.auth0.com/}
+
 mqtt:
   broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
   client-id: machine-state-service
@@ -36,6 +43,7 @@ mqtt:
 
 machine:
   available-ids:
+    # EQLink / MQTT machines
     - washer_01
     - washer_02
     - washer_03
@@ -46,8 +54,48 @@ machine:
     - dryer_02
     - dryer_03
     - dryer_04
+    # Modbus RTU machines (controlled only via Modbus when enabled)
+    - washer_07
+    - washer_08
+    - washer_09
+    - dryer_05
+    - dryer_06
+    - dryer_07
   heartbeat-timeout-seconds: 120
   cycle-check-interval-ms: 60000
+
+# ── Modbus RTU integration (feature-flagged) ─────────────────────────────────
+# Some machines speak Modbus RTU over RS485 instead of EQLink. The backend reaches
+# them through a serial<->HTTP gateway bridge (WireMock in dev). When disabled, these
+# machines fall back to MQTT only. Register map: SX174003A communication protocol.
+#
+#   sign-free: Modbus has no signature; CRC16 protects each frame.
+#   start sequence: select-program (4X1150) -> input-coins (4X1149) -> start (4X1146)
+modbus:
+  enabled: ${MODBUS_ENABLED:false}
+  gateway-url: ${MODBUS_GATEWAY_URL:http://localhost:9090}
+  request-path: ${MODBUS_REQUEST_PATH:/modbus/rtu}
+  default-coins: ${MODBUS_DEFAULT_COINS:1}
+  # Maps internal machine IDs to Modbus slave addresses (1-247).
+  # Populated in ci/dev.yaml; empty here so machines stay MQTT until configured.
+  unit-id-mapping: {}
+
+# ── Feature flags ─────────────────────────────────────────────────────────────
+# Both default DISABLED. The wash-flow flag is enforced in the bot (spring-bot-manager);
+# the reservation flag is enforced here in MachineStateService.
+features:
+  reservation-enabled: ${FEATURE_RESERVATION_ENABLED:false}
+
+# ── Reservation mechanism ─────────────────────────────────────────────────────
+# Slot length is fixed at exactly 1 hour (not configurable). The reservation fee must
+# equal the price of the highest washing cycle (kept in sync with the bot's long cycle).
+# The reservation fee is charged IN ADDITION to the normal wash price.
+reservation:
+  fee-amount: ${RESERVATION_FEE_AMOUNT:1500}
+  currency: ${RESERVATION_CURRENCY:XAF}
+  code-prefix: "RES-"
+  code-length: 6
+  expiry-check-ms: 60000
 
 payment-service:
   base-url: http://localhost:8081
@@ -74,14 +122,6 @@ eqlink:
   # Maps internal machine IDs to EQLink devicename (module serial numbers).
   # Configure via EQLINK_DEVICE_* env vars or in ci/dev.yaml.
   device-name-mapping: {}
-
-# ── Security: Auth0 Resource Server ──────────────────────────────────────────
-spring:
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${AUTH0_ISSUER_URI:https://dev-iuo6si32jobgnmod.eu.auth0.com/}
 
 auth0:
   audience: ${AUTH0_AUDIENCE:https://smartlaundry.api}
