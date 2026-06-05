@@ -6,15 +6,10 @@ spring:
     name: machine-state-service
 
   datasource:
-    url: jdbc:h2:mem:machinedb
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
-
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/machinedb}
+    driver-class-name: org.postgresql.Driver
+    username: ${SPRING_DATASOURCE_USERNAME:machine_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:machine_pass}
 
   jpa:
     hibernate:
@@ -23,7 +18,7 @@ spring:
     properties:
       hibernate:
         format_sql: true
-        dialect: org.hibernate.dialect.H2Dialect
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
   # ── Security: Auth0 Resource Server ──────────────────────────────────────────
   security:
@@ -31,6 +26,7 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${AUTH0_ISSUER_URI:https://dev-iuo6si32jobgnmod.eu.auth0.com/}
+          audience: ${AUTH0_AUDIENCE:https://smartlaundry.api}
 
 mqtt:
   broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}

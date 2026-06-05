@@ -8,12 +8,15 @@ import com.smartlaundromat.machine.model.MachineEvent;
 import com.smartlaundromat.machine.service.MachineService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/machines")
 @RequiredArgsConstructor
@@ -23,6 +26,8 @@ public class MachineController {
 
     @GetMapping
     public ResponseEntity<MachineSummaryResponse> getAllMachines() {
+        log.info("Received request to get all machines");
+
         return ResponseEntity.ok(machineService.getAllMachines());
     }
 

@@ -1,0 +1,68 @@
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: machine-state-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: machinedb
+      POSTGRES_USER: machine_user
+      POSTGRES_PASSWORD: machine_pass
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U machine_user -d machinedb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Mosquitto MQTT Broker ────────────────────────────────────────────────────
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: machine-state-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -t health -m ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Machine State Service ────────────────────────────────────────────────────
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: machine-state-service
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8082:8082"
+  #   environment:
+  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/machinedb
+  #     SPRING_DATASOURCE_USERNAME: machine_user
+  #     SPRING_DATASOURCE_PASSWORD: machine_pass
+  #     MQTT_BROKER_URL: tcp://mosquitto:1883
+  #     # Override these for your environment:
+  #     # AUTH0_ISSUER_URI: https://your-tenant.eu.auth0.com/
+  #     # AUTH0_AUDIENCE: https://smartlaundry.api
+  #     # MODBUS_ENABLED: "false"
+  #     # MODBUS_GATEWAY_URL: http://modbus-gateway:9090
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     mosquitto:
+  #       condition: service_healthy
+
+volumes:
+  postgres_data:
+  mosquitto_data:
+  mosquitto_logs:
