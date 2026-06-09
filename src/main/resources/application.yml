@@ -80,7 +80,7 @@ modbus:
 # Both default DISABLED. The wash-flow flag is enforced in the bot (spring-bot-manager);
 # the reservation flag is enforced here in MachineStateService.
 features:
-  reservation-enabled: ${FEATURE_RESERVATION_ENABLED:false}
+  reservation-enabled: ${FEATURE_RESERVATION_ENABLED:true}
 
 # ── Reservation mechanism ─────────────────────────────────────────────────────
 # Slot length is fixed at exactly 1 hour (not configurable). The reservation fee must
