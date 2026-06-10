@@ -3,6 +3,7 @@ package com.smartlaundromat.machine.eqlink;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -137,7 +138,7 @@ public class EqLinkProperties {
      */
     public Optional<String> resolveDeviceName(String machineId) {
         return Optional.ofNullable(deviceNameMapping.get(machineId))
-                .filter(name -> name != null && !name.isBlank());
+                .filter(StringUtils::hasText);
     }
 
     /**
@@ -146,8 +147,8 @@ public class EqLinkProperties {
      */
     public boolean isFullyConfigured() {
         return enabled
-                && vendorId  != null && !vendorId.isBlank()
-                && appId     != null && !appId.isBlank()
-                && secretKey != null && !secretKey.isBlank();
+                && StringUtils.hasText(vendorId)
+                && StringUtils.hasText(appId)
+                && StringUtils.hasText(secretKey);
     }
 }

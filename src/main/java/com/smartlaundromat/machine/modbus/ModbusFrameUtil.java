@@ -1,7 +1,9 @@
 package com.smartlaundromat.machine.modbus;
 
+import org.springframework.util.StringUtils;
+
 /**
- * Builds and parses Modbus RTU frames for the SX174003A controller.
+ * Builds and parses Modbus RTU frames.
  *
  * <h2>CRC16 (Modbus)</h2>
  * Polynomial {@code 0xA001} (reflected {@code 0x8005}), initial value {@code 0xFFFF}.
@@ -11,19 +13,23 @@ package com.smartlaundromat.machine.modbus;
  * <pre>
  *   unit | 0x10 | addrHi addrLo | qtyHi qtyLo(=0x0001) | byteCount(=0x02) | valHi valLo | crcLo crcHi
  * </pre>
- * Example — start machine on slave 1 ({@code 4X1146}=0x0479, value 1):
+ * Example — start washer on slave 1 ({@link WasherModbusRegisters#REG_START}=0x0479, value 1):
  * <pre>01 10 04 79 00 01 02 00 01 29 F9</pre>
  *
  * <h2>Read frame (function 0x03)</h2>
  * <pre>
  *   unit | 0x03 | addrHi addrLo | qtyHi qtyLo | crcLo crcHi
  * </pre>
- * Example — read 20 monitor registers on slave 1 ({@code 5X1165}=0x048C):
+ * Example — read 20 status registers on slave 1 ({@link WasherModbusRegisters#REG_STATUS_BASE}=0x048C):
  * <pre>01 03 04 8C 00 14 85 1E</pre>
  */
 public final class ModbusFrameUtil {
 
     private ModbusFrameUtil() { }
+
+    // ── Generic Modbus function codes ────────────────────────────────────────────
+    public static final int FUNC_READ_HOLDING  = 0x03;
+    public static final int FUNC_WRITE_MULTIPLE = 0x10;
 
     // ── CRC16 ───────────────────────────────────────────────────────────────────
 
@@ -59,14 +65,14 @@ public final class ModbusFrameUtil {
      * Builds a "write single holding register" frame (function 0x10, quantity 1).
      *
      * @param unitId  slave address (1–247)
-     * @param address zero-based register address (e.g. {@link ModbusRegisters#REG_START})
+     * @param address zero-based register address (e.g. {@link WasherModbusRegisters#REG_START})
      * @param value   16-bit value to write (0–65535)
      * @return complete RTU frame including CRC
      */
     public static byte[] buildWriteSingleRegister(int unitId, int address, int value) {
         byte[] pdu = new byte[] {
                 (byte) unitId,
-                (byte) ModbusRegisters.FUNC_WRITE_MULTIPLE,
+                (byte) FUNC_WRITE_MULTIPLE,
                 (byte) ((address >> 8) & 0xFF),
                 (byte) (address & 0xFF),
                 0x00, 0x01,            // quantity of registers = 1
@@ -88,7 +94,7 @@ public final class ModbusFrameUtil {
     public static byte[] buildReadHoldingRegisters(int unitId, int address, int quantity) {
         byte[] pdu = new byte[] {
                 (byte) unitId,
-                (byte) ModbusRegisters.FUNC_READ_HOLDING,
+                (byte) FUNC_READ_HOLDING,
                 (byte) ((address >> 8) & 0xFF),
                 (byte) (address & 0xFF),
                 (byte) ((quantity >> 8) & 0xFF),
@@ -146,7 +152,7 @@ public final class ModbusFrameUtil {
 
     /** Parses space- or comma-separated hex (e.g. {@code "01 10 04 79"}) into bytes. */
     public static byte[] fromHex(String hex) {
-        if (hex == null || hex.isBlank()) return new byte[0];
+        if (!StringUtils.hasText(hex)) return new byte[0];
         String[] tokens = hex.trim().split("[\\s,]+");
         byte[] out = new byte[tokens.length];
         for (int i = 0; i < tokens.length; i++) {

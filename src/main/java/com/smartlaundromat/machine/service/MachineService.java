@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -177,7 +178,7 @@ public class MachineService {
         // the start request MUST carry the matching reservation code (checked by code + machine,
         // not by user). A valid code is consumed (marked USED) here.
         reservationService.activeReservationCovering(request.getMachineId()).ifPresent(reserved -> {
-            if (request.getReservationCode() == null || request.getReservationCode().isBlank()) {
+            if (!StringUtils.hasText(request.getReservationCode())) {
                 throw new MachineNotAvailableException(
                         "Machine " + request.getMachineId()
                                 + " is reserved right now — a reservation code is required to start it");

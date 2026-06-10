@@ -6,7 +6,7 @@ spring:
     name: machine-state-service
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/machinedb}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5435/machinedb}
     driver-class-name: org.postgresql.Driver
     username: ${SPRING_DATASOURCE_USERNAME:machine_user}
     password: ${SPRING_DATASOURCE_PASSWORD:machine_pass}
@@ -68,7 +68,7 @@ machine:
 #   sign-free: Modbus has no signature; CRC16 protects each frame.
 #   start sequence: select-program (4X1150) -> input-coins (4X1149) -> start (4X1146)
 modbus:
-  enabled: ${MODBUS_ENABLED:false}
+  enabled: ${MODBUS_ENABLED:true}
   gateway-url: ${MODBUS_GATEWAY_URL:http://localhost:9090}
   request-path: ${MODBUS_REQUEST_PATH:/modbus/rtu}
   default-coins: ${MODBUS_DEFAULT_COINS:1}

@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -44,7 +45,7 @@ public class MqttService implements MqttCallback {
             options.setConnectionTimeout(10);
             options.setKeepAliveInterval(20);
 
-            if (mqttConfig.getUsername() != null && !mqttConfig.getUsername().isBlank()) {
+            if (StringUtils.hasText(mqttConfig.getUsername())) {
                 options.setUserName(mqttConfig.getUsername());
                 options.setPassword(mqttConfig.getPassword().toCharArray());
             }

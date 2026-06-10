@@ -5,6 +5,7 @@ import com.smartlaundromat.machine.model.Reservation;
 import com.smartlaundromat.machine.service.ReservationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +23,7 @@ import java.util.List;
  *   <tr><td>GET</td><td>/api/reservations/machine/{machineId}</td><td>List a machine's reservations</td><td>sls-reservation-read</td></tr>
  * </table>
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/reservations")
 @RequiredArgsConstructor
@@ -31,28 +33,35 @@ public class ReservationController {
 
     @PostMapping
     public ResponseEntity<ReservationResponse> create(@Valid @RequestBody CreateReservationRequest request) {
+        log.info("Received request to create reservation for machineId={}, slotStart={}",
+                request.getMachineId(), request.getSlotStart());
         return ResponseEntity.ok(reservationService.createReservation(request));
     }
 
     @PostMapping("/activate")
     public ResponseEntity<ReservationResponse> activate(@Valid @RequestBody ActivateReservationRequest request) {
+        log.info("Received request to activate reservation with transactionReference={}", request.getTransactionReference());
         return ResponseEntity.ok(reservationService.activateByReference(request.getTransactionReference()));
     }
 
     @PostMapping("/validate")
     public ResponseEntity<ValidateReservationResponse> validate(
             @Valid @RequestBody ValidateReservationRequest request) {
+        log.info("Received request to validate reservation with reservationCode={} and machineId={}",
+                request.getReservationCode(), request.getMachineId());
         return ResponseEntity.ok(
                 reservationService.validate(request.getReservationCode(), request.getMachineId()));
     }
 
     @GetMapping("/{code}")
     public ResponseEntity<ReservationResponse> getByCode(@PathVariable String code) {
+        log.info("Received request to fetch reservation with code={}", code);
         return ResponseEntity.ok(reservationService.getByCode(code));
     }
 
     @GetMapping("/machine/{machineId}")
     public ResponseEntity<List<Reservation>> listForMachine(@PathVariable String machineId) {
+        log.info("Received request to list reservations for machineId={}", machineId);
         return ResponseEntity.ok(reservationService.listForMachine(machineId));
     }
 }

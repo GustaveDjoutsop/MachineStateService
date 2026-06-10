@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Collections;
@@ -56,7 +57,7 @@ public class EqLinkClient {
         if (!props.isFullyConfigured()) return Collections.emptyList();
         try {
             Map<String, Object> body = baseParams();
-            if (props.getWifiSsid() != null && !props.getWifiSsid().isBlank()) {
+            if (StringUtils.hasText(props.getWifiSsid())) {
                 body.put("wifi_ssid", props.getWifiSsid());
             }
             sign(body);

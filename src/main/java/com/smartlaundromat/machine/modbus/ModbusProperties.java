@@ -3,6 +3,7 @@ package com.smartlaundromat.machine.modbus;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -69,6 +70,6 @@ public class ModbusProperties {
 
     /** {@code true} when enabled and a gateway URL is configured. */
     public boolean isFullyConfigured() {
-        return enabled && gatewayUrl != null && !gatewayUrl.isBlank();
+        return enabled && StringUtils.hasText(gatewayUrl);
     }
 }
