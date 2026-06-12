@@ -119,6 +119,19 @@ eqlink:
   # Configure via EQLINK_DEVICE_* env vars or in ci/dev.yaml.
   device-name-mapping: {}
 
+# Logging — levels are configurable via env vars
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.smartlaundromat.machine: ${LOG_LEVEL_MACHINE:INFO}
+    com.smartlaundromat.machine.service: ${LOG_LEVEL_SERVICE:INFO}
+    com.smartlaundromat.machine.controller: ${LOG_LEVEL_CONTROLLER:INFO}
+    com.smartlaundromat.machine.mqtt: ${LOG_LEVEL_MQTT:INFO}
+    com.smartlaundromat.machine.modbus: ${LOG_LEVEL_MODBUS:INFO}
+    com.smartlaundromat.machine.eqlink: ${LOG_LEVEL_EQLINK:INFO}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%logger{36}] - %msg%n"
+
 auth0:
   audience: ${AUTH0_AUDIENCE:https://smartlaundry.api}
 
