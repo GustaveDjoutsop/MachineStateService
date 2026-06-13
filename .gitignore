@@ -18,3 +18,7 @@ target/
 # OS
 .DS_Store
 Thumbs.db
+
+
+# Doppler CLI local config (machine-specific config selection)
+.doppler.yaml
