@@ -94,7 +94,7 @@ reservation:
   expiry-check-ms: 60000
 
 payment-service:
-  base-url: http://localhost:8081
+  base-url: ${PAYMENT_SERVICE_URL:http://localhost:8081}
 
 # ── EQLink Open API v2 integration ───────────────────────────────────────────
 # EQLink is a machine CONTROL platform (not a payment system).
@@ -119,7 +119,8 @@ eqlink:
   # Configure via EQLINK_DEVICE_* env vars or in ci/dev.yaml.
   device-name-mapping: {}
 
-# Logging — levels are configurable via env vars
+# Logging — levels are configurable via env vars; JSON structured output +
+# trace/span/correlation IDs are configured in logback-spring.xml.
 logging:
   level:
     root: ${LOG_LEVEL_ROOT:INFO}
@@ -130,7 +131,23 @@ logging:
     com.smartlaundromat.machine.modbus: ${LOG_LEVEL_MODBUS:INFO}
     com.smartlaundromat.machine.eqlink: ${LOG_LEVEL_EQLINK:INFO}
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%logger{36}] - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%logger{36}] [traceId=%X{traceId:-}, correlationId=%X{correlationId:-}] - %msg%n"
+
+# ── Distributed tracing (P1 — OpenTelemetry via Micrometer Tracing) ──────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
 
 auth0:
   audience: ${AUTH0_AUDIENCE:https://smartlaundry.api}

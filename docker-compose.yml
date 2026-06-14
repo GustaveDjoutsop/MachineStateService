@@ -51,6 +51,7 @@ services:
   #     SPRING_DATASOURCE_USERNAME: machine_user
   #     SPRING_DATASOURCE_PASSWORD: machine_pass
   #     MQTT_BROKER_URL: tcp://mosquitto:1883
+  #     PAYMENT_SERVICE_URL: ${PAYMENT_SERVICE_URL:-http://localhost:8081}
   #     # Override these for your environment:
   #     # AUTH0_ISSUER_URI: https://your-tenant.eu.auth0.com/
   #     # AUTH0_AUDIENCE: https://smartlaundry.api
