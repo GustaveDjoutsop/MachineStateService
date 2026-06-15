@@ -21,8 +21,8 @@ TC01 - Start a cycle on an IDLE machine succeeds
     ${cycle}=    Start Cycle    ${CYCLE_MACHINE}
     Should Be Equal As Strings    ${cycle}[machineId]     ${CYCLE_MACHINE}
     Should Be Equal As Strings    ${cycle}[status]        IN_PROGRESS
-    Should Not Be None            ${cycle}[startedAt]
-    Should Not Be None            ${cycle}[endsAt]
+    Should Not Be Equal            ${cycle}[startedAt]    ${None}
+    Should Not Be Equal            ${cycle}[endsAt]    ${None}
     Should Be True                ${cycle}[durationMinutes] == 30
 
 TC02 - Machine status is RUNNING after cycle start
@@ -34,8 +34,10 @@ TC02 - Machine status is RUNNING after cycle start
 
 TC03 - Cannot start a second cycle on a RUNNING machine
     [Tags]    cycle    negative    conflict
+    &{payload}=    Create Dictionary
+    ...    machineId=${CYCLE_MACHINE}    cycleType=NORMAL    durationMinutes=${30}    pulseCount=${1}
     ${resp}=    POST On Session    machine    /api/machines/start-cycle
-    ...    json={"machineId": "${CYCLE_MACHINE}", "cycleType": "NORMAL", "durationMinutes": 30, "pulseCount": 1}
+    ...    json=${payload}
     ...    expected_status=409
     ${body}=    Set Variable    ${resp.json()}
     Should Be Equal As Strings    ${body}[error]    MACHINE_NOT_AVAILABLE
@@ -69,16 +71,19 @@ TC06 - Start a Cotton 60 cycle with custom duration and pulses
 
 TC07 - Start cycle fails for unknown machine
     [Tags]    cycle    negative    validation
+    &{payload}=    Create Dictionary
+    ...    machineId=${MACHINE_UNKNOWN}    cycleType=NORMAL    durationMinutes=${30}    pulseCount=${1}
     ${resp}=    POST On Session    machine    /api/machines/start-cycle
-    ...    json={"machineId": "${MACHINE_UNKNOWN}", "cycleType": "NORMAL", "durationMinutes": 30, "pulseCount": 1}
+    ...    json=${payload}
     ...    expected_status=404
     ${body}=    Set Variable    ${resp.json()}
     Should Be Equal As Strings    ${body}[error]    MACHINE_NOT_FOUND
 
 TC08 - Start cycle fails with missing required fields
     [Tags]    cycle    negative    validation
+    &{payload}=    Create Dictionary    cycleType=NORMAL
     POST On Session    machine    /api/machines/start-cycle
-    ...    json={"cycleType": "NORMAL"}    expected_status=400
+    ...    json=${payload}    expected_status=400
 
 TC09 - Send stop command to a running machine
     [Tags]    cycle    command
