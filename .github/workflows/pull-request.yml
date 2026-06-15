@@ -73,8 +73,8 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           mvn clean verify sonar:sonar -B \
-            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} \
-            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }} \
+            -Dsonar.projectKey=GustaveDjoutsop_MachineStateService \
+            -Dsonar.organization=gustavedjoutsop \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
             -Dsonar.pullrequest.key=${{ github.event.pull_request.number }} \
@@ -85,6 +85,21 @@ jobs:
     name: Integration Tests (Robot Framework + Mosquitto MQTT)
     runs-on: ubuntu-latest
     needs: sonar
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: machinedb
+          POSTGRES_USER: machine_user
+          POSTGRES_PASSWORD: machine_pass
+        ports:
+          - 5435:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -135,7 +150,7 @@ jobs:
             &
           echo "Waiting for MachineStateService to be ready (machines seeded)..."
           for i in $(seq 1 30); do
-            resp=$(curl -sf http://localhost:8082/v3/api-docs 2>/dev/null)
+            resp=$(curl -sf http://localhost:8082/v3/api-docs 2>/dev/null || true)
             if [ -n "$resp" ]; then
               echo "Service ready"
               break
@@ -152,9 +167,9 @@ jobs:
         run: |
           robot \
             --outputdir integration-tests/results \
-            --log integration-tests/results/log.html \
-            --report integration-tests/results/report.html \
-            --xunit integration-tests/results/xunit.xml \
+            --log log.html \
+            --report report.html \
+            --xunit xunit.xml \
             --variable AUTH0_CLIENT_ID:"${AUTH0_CLIENT_ID}" \
             --variable AUTH0_CLIENT_SECRET:"${AUTH0_CLIENT_SECRET}" \
             --variable AUTH0_TOKEN_URL:"https://dev-iuo6si32jobgnmod.eu.auth0.com/oauth/token" \

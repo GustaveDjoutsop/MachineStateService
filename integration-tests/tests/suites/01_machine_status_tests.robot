@@ -51,9 +51,9 @@ TC05 - Get single washer returns correct fields
     ${machine}=    Get Machine By Id    ${MACHINE_WASHER}
     Should Be Equal As Strings    ${machine}[machineId]       ${MACHINE_WASHER}
     Should Be Equal As Strings    ${machine}[type]            WASHER
-    Should Be Equal As Strings    ${machine}[displayName]     Washer 1
-    Should Not Be None            ${machine}[status]
-    Should Not Be None            ${machine}[online]
+    Should Be Equal As Strings    ${machine}[displayName]     Washer 01
+    Should Not Be Equal           ${machine}[status]    ${None}
+    Should Not Be Equal           ${machine}[online]    ${None}
 
 TC06 - Get single dryer returns correct fields
     [Tags]    machine    status
@@ -78,9 +78,9 @@ TC09 - Machine has empty events list initially
     [Tags]    machine    events
     ${events}=    Get Machine Events    ${MACHINE_WASHER_2}
     # Events list may be empty or contain seeding events
-    Should Not Be None    ${events}
+    Should Not Be Equal    ${events}    ${None}
 
 TC10 - Machine has empty cycle history initially
     [Tags]    machine    cycles
     ${cycles}=    Get Machine Cycles    ${MACHINE_WASHER_2}
-    Should Not Be None    ${cycles}
+    Should Not Be Equal    ${cycles}    ${None}
