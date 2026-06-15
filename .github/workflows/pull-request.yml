@@ -135,7 +135,7 @@ jobs:
             &
           echo "Waiting for MachineStateService to be ready (machines seeded)..."
           for i in $(seq 1 30); do
-            resp=$(curl -sf http://localhost:8082/v3/api-docs 2>/dev/null)
+            resp=$(curl -sf http://localhost:8082/v3/api-docs 2>/dev/null || true)
             if [ -n "$resp" ]; then
               echo "Service ready"
               break
