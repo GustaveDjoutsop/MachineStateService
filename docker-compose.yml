@@ -1,23 +1,11 @@
 services:
 
-  # ── PostgreSQL ───────────────────────────────────────────────────────────────
-  postgres:
-    image: postgres:16-alpine
-    container_name: machine-state-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: machinedb
-      POSTGRES_USER: machine_user
-      POSTGRES_PASSWORD: machine_pass
-    ports:
-      - "5435:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U machine_user -d machinedb"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # postgres decommissioned 2026-06-16 (P3 cutover) — MachineStateService
+  # now connects to Supabase smartlaundry-dev (schema: machine, role: machine_svc)
+  # via Doppler-injected SPRING_DATASOURCE_URL/USERNAME/PASSWORD.
+  # Doppler: project machine-state-service, env dev.
+  # To run locally: doppler run -- mvn spring-boot:run
+  # MachineService.initializeMachines() auto-seeds the machine fleet on first boot.
 
   # ── Mosquitto MQTT Broker ────────────────────────────────────────────────────
   mosquitto:
@@ -47,23 +35,14 @@ services:
   #   ports:
   #     - "8082:8082"
   #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/machinedb
-  #     SPRING_DATASOURCE_USERNAME: machine_user
-  #     SPRING_DATASOURCE_PASSWORD: machine_pass
   #     MQTT_BROKER_URL: tcp://mosquitto:1883
   #     PAYMENT_SERVICE_URL: ${PAYMENT_SERVICE_URL:-http://localhost:8081}
-  #     # Override these for your environment:
-  #     # AUTH0_ISSUER_URI: https://your-tenant.eu.auth0.com/
-  #     # AUTH0_AUDIENCE: https://smartlaundry.api
-  #     # MODBUS_ENABLED: "false"
-  #     # MODBUS_GATEWAY_URL: http://modbus-gateway:9090
+  #     # Inject all secrets via Doppler:
+  #     # doppler run -- docker compose up app
   #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
   #     mosquitto:
   #       condition: service_healthy
 
 volumes:
-  postgres_data:
   mosquitto_data:
   mosquitto_logs:
