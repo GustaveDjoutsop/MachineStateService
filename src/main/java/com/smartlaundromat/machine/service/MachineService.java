@@ -28,6 +28,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -159,6 +160,18 @@ public class MachineService {
 
     @Transactional
     public MachineCycle startCycle(StartCycleRequest request) {
+        // Idempotency: the outbox relay may deliver the same PaymentSucceeded event
+        // more than once. Return the existing cycle rather than double-starting.
+        if (StringUtils.hasText(request.getTransactionReference())) {
+            Optional<MachineCycle> existing =
+                    machineCycleRepository.findByTransactionReference(request.getTransactionReference());
+            if (existing.isPresent()) {
+                log.info("Idempotent start — returning existing cycle for tx={}",
+                        request.getTransactionReference());
+                return existing.get();
+            }
+        }
+
         Machine machine = machineRepository.findByMachineId(request.getMachineId())
                 .orElseThrow(() -> new MachineNotFoundException("Machine not found: " + request.getMachineId()));
 
