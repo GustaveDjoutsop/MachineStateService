@@ -17,4 +17,6 @@ public interface MachineCycleRepository extends JpaRepository<MachineCycle, Long
     List<MachineCycle> findByStatusAndEndsAtBefore(CycleStatus status, LocalDateTime before);
 
     List<MachineCycle> findByMachineIdOrderByCreatedAtDesc(String machineId);
+
+    Optional<MachineCycle> findByTransactionReference(String transactionReference);
 }
